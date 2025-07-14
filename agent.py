@@ -1,27 +1,44 @@
+# NOT: Bu script embedding işlemi yapmaz, sadece mevcut chroma_db altındaki tüm koleksiyonlardan veri sorgular.
+# Eğer yeni belge eklediyseniz, önce ilgili embedding scriptini (vector.py veya embed_all_pdfs.py) çalıştırmalısınız.
+
 from langchain_core.prompts import ChatPromptTemplate
 from openrouter_llm import OpenRouterLLM
 from vector import get_retriever
 import os
 
-# Tüm koleksiyonları otomatik olarak birleştir
 DB_DIR = "./chroma_db"
-COLLECTIONS = [name for name in os.listdir(DB_DIR) if os.path.isdir(os.path.join(DB_DIR, name)) and not name.startswith('.')]
 
+def get_all_collections(db_dir):
+    collections = set()
+    for entry in os.listdir(db_dir):
+        path = os.path.join(db_dir, entry)
+        # Klasör ise koleksiyon olarak ekle
+        if os.path.isdir(path) and not entry.startswith('.'):
+            collections.add(entry)
+        # .sqlite3 dosyası ise, dosya adını koleksiyon olarak ekle (ana veritabanı hariç)
+        elif entry.endswith('.sqlite3') and entry != "chroma.sqlite3":
+            collections.add(entry.replace('.sqlite3', ''))
+    return list(collections)
+
+COLLECTIONS = get_all_collections(DB_DIR)
 retrievers = [get_retriever(collection) for collection in COLLECTIONS]
 
-def merged_retrieve(question, k=5):
+def merged_retrieve(question, k=20):
     results = []
-    for retriever in retrievers:
+    used_collections = []
+    for idx, retriever in enumerate(retrievers):
+        collection_name = COLLECTIONS[idx]
         try:
             docs = retriever.invoke(question)
+            if docs:
+                used_collections.append(collection_name)
             if isinstance(docs, list):
                 results.extend(docs)
             else:
                 results.append(docs)
         except Exception:
             continue
-    # En alakalı ilk k sonucu döndür
-    return results[:k]
+    return results[:k], used_collections
 
 model = OpenRouterLLM(model="deepseek/deepseek-r1-0528:free")
 
@@ -45,6 +62,10 @@ while True:
     question = input("Sorunuzu yazın (q ile çık): ")
     if question == "q":
         break
-    reviews = merged_retrieve(question)
+    reviews, used_collections = merged_retrieve(question)
     result = chain.invoke({"reviews": reviews, "question": question})
+    if used_collections:
+        result += "\n\n---\nBu cevabın oluşturulmasında kullanılan veritabanları: " + ", ".join(used_collections)
+    else:
+        result += "\n\n---\nBu cevabın oluşturulmasında hiçbir veritabanı kullanılmadı."
     print(result) 
