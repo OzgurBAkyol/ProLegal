@@ -5,6 +5,10 @@ from langchain_core.prompts import ChatPromptTemplate
 from openrouter_llm import OpenRouterLLM
 from vector import get_retriever
 import os
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+import uvicorn
 
 DB_DIR = "./chroma_db"
 
@@ -57,15 +61,55 @@ Your answer (in Turkish):
 
 chain = prompt | model
 
-while True:
-    print("\n\n-------------------------------")
-    question = input("Sorunuzu yazın (q ile çık): ")
-    if question == "q":
-        break
+# FastAPI uygulaması oluştur
+app = FastAPI()
+
+# CORS ayarları (gerekirse)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+class AskRequest(BaseModel):
+    question: str
+
+@app.post("/ask")
+async def ask_endpoint(req: AskRequest):
+    question = req.question
     reviews, used_collections = merged_retrieve(question)
     result = chain.invoke({"reviews": reviews, "question": question})
     if used_collections:
         result += "\n\n---\nBu cevabın oluşturulmasında kullanılan veritabanları: " + ", ".join(used_collections)
     else:
         result += "\n\n---\nBu cevabın oluşturulmasında hiçbir veritabanı kullanılmadı."
-    print(result) 
+    return {"answer": result, "used_collections": used_collections}
+
+def test_embedding_arama(sorgu, k=10):
+    print(f"\n[DEBUG] '{sorgu}' için ilk {k} chunk arama sonuçları:")
+    results, used_collections = merged_retrieve(sorgu, k=k)
+    for idx, doc in enumerate(results):
+        print(f"\n--- Sonuç {idx+1} ---\n{doc}")
+    print(f"\nKullanılan koleksiyonlar: {used_collections}")
+
+if __name__ == "__main__":
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "api":
+        uvicorn.run("agent:app", host="0.0.0.0", port=8001, reload=True)
+    elif len(sys.argv) > 2 and sys.argv[1] == "test_embed":
+        test_embedding_arama(sys.argv[2], k=20)
+    else:
+        while True:
+            print("\n\n-------------------------------")
+            question = input("Sorunuzu yazın (q ile çık): ")
+            if question == "q":
+                break
+            reviews, used_collections = merged_retrieve(question)
+            result = chain.invoke({"reviews": reviews, "question": question})
+            if used_collections:
+                result += "\n\n---\nBu cevabın oluşturulmasında kullanılan veritabanları: " + ", ".join(used_collections)
+            else:
+                result += "\n\n---\nBu cevabın oluşturulmasında hiçbir veritabanı kullanılmadı."
+            print(result) 

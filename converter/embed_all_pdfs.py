@@ -7,6 +7,11 @@ from langchain_core.documents import Document
 from langchain.storage import InMemoryStore
 from langchain.retrievers.multi_vector import MultiVectorRetriever
 
+# NLTK ile cümle bazlı bölme
+import nltk
+nltk.download('punkt')
+from nltk.tokenize import sent_tokenize
+
 PDF_DIR = "data/pdf"
 DB_DIR = "./chroma_db"
 EMBED_MODEL = "mxbai-embed-large"
@@ -40,7 +45,12 @@ for pdf_file in os.listdir(PDF_DIR):
         if "Table" in str(type(chunk)):
             tables.append(chunk)
         elif "CompositeElement" in str(type(chunk)):
-            texts.append(chunk)
+            # Cümle bazlı bölme
+            text = getattr(chunk, "text", str(chunk))
+            sentences = sent_tokenize(text)
+            for sent in sentences:
+                if len(sent.strip()) > 10:  # çok kısa cümleleri atla
+                    texts.append(sent.strip())
             for el in getattr(chunk.metadata, "orig_elements", []):
                 if "Image" in str(type(el)):
                     images.append(el)
@@ -54,15 +64,21 @@ for pdf_file in os.listdir(PDF_DIR):
     id_key = "doc_id"
     retriever = MultiVectorRetriever(vectorstore=vectorstore, docstore=store, id_key=id_key)
 
-    def add_chunks(chunks, kind):
-        ids = [str(uuid.uuid4()) for _ in chunks]
-        documents = [Document(page_content=getattr(chunk, "text", str(chunk)), metadata={id_key: ids[i]}) for i, chunk in enumerate(chunks)]
+    def add_chunks(text_chunks, kind):
+        ids = [str(uuid.uuid4()) for _ in text_chunks]
+        documents = []
+        for i, chunk in enumerate(text_chunks):
+            # Eğer chunk string ise direkt ekle, değilse stringe çevir
+            if isinstance(chunk, str):
+                content = chunk
+            else:
+                content = str(chunk)
+            documents.append(Document(page_content=content, metadata={id_key: ids[i]}))
         if documents:
             vectorstore.add_documents(documents, ids=ids)
-            store.mset(list(zip(ids, chunks)))
+            store.mset(list(zip(ids, text_chunks)))
             print(f"✅ {kind} vektör olarak eklendi: {len(documents)}")
 
     add_chunks(texts, "Metin")
     add_chunks(tables, "Tablo")
-    add_chunks(images, "Görsel")
     print(f"🎯 {pdf_file} için embedding işlemi tamamlandı.") 

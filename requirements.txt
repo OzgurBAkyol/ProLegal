@@ -21,3 +21,9 @@ python-dotenv
 langchain_ollama 
 langchain_chroma 
 langchain-core
+fastapi
+requests
+folium>=0.15.1
+streamlit
+streamlit-folium
+folium
