@@ -1,16 +1,18 @@
 # converter/convert_9_5_42489.py
 
-import os
 import csv
+import os
 import re
+
 from docx import Document
 
 INPUT_FILE = "data/doc/9.5.42489.docx"
 OUTPUT_FILE = "data/csv/9.5.42489.csv"
 
+
 def convert_docx_to_csv(input_path, output_path):
     doc = Document(input_path)
-    
+
     rows = []
     current_section = ""
     current_madde_no = ""
@@ -19,7 +21,14 @@ def convert_docx_to_csv(input_path, output_path):
 
     def add_row():
         if current_madde_no:
-            rows.append([current_section.strip(), current_madde_no.strip(), current_title.strip(), current_content.strip()])
+            rows.append(
+                [
+                    current_section.strip(),
+                    current_madde_no.strip(),
+                    current_title.strip(),
+                    current_content.strip(),
+                ]
+            )
 
     for para in doc.paragraphs:
         text = para.text.strip()
@@ -54,6 +63,7 @@ def convert_docx_to_csv(input_path, output_path):
         writer = csv.writer(f)
         writer.writerow(["Bölüm", "Madde No", "Başlık", "İçerik"])
         writer.writerows(rows)
+
 
 if __name__ == "__main__":
     convert_docx_to_csv(INPUT_FILE, OUTPUT_FILE)

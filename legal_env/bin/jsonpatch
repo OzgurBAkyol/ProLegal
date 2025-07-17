@@ -1,13 +1,13 @@
 #!/Users/ozgurberkeakyol/Desktop/ProLegal-task/ProLegal/legal_env/bin/python3
 # -*- coding: utf-8 -*-
 
-import sys
-import os.path
-import json
-import jsonpatch
-import tempfile
 import argparse
+import json
+import os.path
+import sys
+import tempfile
 
+import jsonpatch
 
 parser = argparse.ArgumentParser(
     description='Apply a JSON patch on a JSON file')

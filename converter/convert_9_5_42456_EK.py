@@ -1,11 +1,13 @@
 # converter/convert_9_5_42456_EK.py
 
-import os
 import csv
+import os
+
 from docx import Document
 
 INPUT_FILE = "data/doc/9.5.42456 EK.docx"
 OUTPUT_FILE = "data/csv/9.5.42456_EK.csv"
+
 
 def convert_ek_blocks_to_csv(input_path, output_path):
     doc = Document(input_path)
@@ -46,6 +48,7 @@ def convert_ek_blocks_to_csv(input_path, output_path):
 
     print(f"✅ CSV oluşturuldu: {output_path}")
     print(f"➡️ Toplam satır sayısı: {len(rows)}")
+
 
 if __name__ == "__main__":
     convert_ek_blocks_to_csv(INPUT_FILE, OUTPUT_FILE)

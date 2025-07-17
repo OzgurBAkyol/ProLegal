@@ -1,13 +1,16 @@
-import os
 import csv
+import os
 import re
+
 import docx2txt
 
 INPUT_FILE = "data/doc/9.5.33795.docx"
 OUTPUT_FILE = "data/csv/9.5.33795.csv"
 
+
 def extract_text(docx_path):
     return docx2txt.process(docx_path)
+
 
 def parse_text_to_rows(text):
     lines = text.splitlines()
@@ -18,7 +21,9 @@ def parse_text_to_rows(text):
 
     def add_row():
         if current_madde and current_icerik.strip():
-            rows.append([current_madde.strip(), current_baslik.strip(), current_icerik.strip()])
+            rows.append(
+                [current_madde.strip(), current_baslik.strip(), current_icerik.strip()]
+            )
 
     for line in lines:
         line = line.strip()
@@ -39,12 +44,14 @@ def parse_text_to_rows(text):
     add_row()
     return rows
 
+
 def save_to_csv(rows, output_path):
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     with open(output_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(["Madde No", "Başlık", "İçerik"])
         writer.writerows(rows)
+
 
 if __name__ == "__main__":
     text = extract_text(INPUT_FILE)

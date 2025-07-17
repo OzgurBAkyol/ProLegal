@@ -27,3 +27,9 @@ folium>=0.15.1
 streamlit
 streamlit-folium
 folium
+geopandas 
+shapely
+osm2geojson
+osmnx
+pyproj
+rasterio

@@ -1,15 +1,16 @@
 import os
 import uuid
-from unstructured.partition.pdf import partition_pdf
-from langchain_ollama import OllamaEmbeddings
-from langchain_chroma import Chroma
-from langchain_core.documents import Document
-from langchain.storage import InMemoryStore
-from langchain.retrievers.multi_vector import MultiVectorRetriever
 
 # NLTK ile cümle bazlı bölme
 import nltk
-nltk.download('punkt')
+from langchain.retrievers.multi_vector import MultiVectorRetriever
+from langchain.storage import InMemoryStore
+from langchain_chroma import Chroma
+from langchain_core.documents import Document
+from langchain_ollama import OllamaEmbeddings
+from unstructured.partition.pdf import partition_pdf
+
+nltk.download("punkt")
 from nltk.tokenize import sent_tokenize
 
 PDF_DIR = "data/pdf"
@@ -58,11 +59,13 @@ for pdf_file in os.listdir(PDF_DIR):
     vectorstore = Chroma(
         collection_name=collection_name,
         embedding_function=embeddings,
-        persist_directory=db_location
+        persist_directory=db_location,
     )
     store = InMemoryStore()
     id_key = "doc_id"
-    retriever = MultiVectorRetriever(vectorstore=vectorstore, docstore=store, id_key=id_key)
+    retriever = MultiVectorRetriever(
+        vectorstore=vectorstore, docstore=store, id_key=id_key
+    )
 
     def add_chunks(text_chunks, kind):
         ids = [str(uuid.uuid4()) for _ in text_chunks]
@@ -81,4 +84,4 @@ for pdf_file in os.listdir(PDF_DIR):
 
     add_chunks(texts, "Metin")
     add_chunks(tables, "Tablo")
-    print(f"🎯 {pdf_file} için embedding işlemi tamamlandı.") 
+    print(f"🎯 {pdf_file} için embedding işlemi tamamlandı.")

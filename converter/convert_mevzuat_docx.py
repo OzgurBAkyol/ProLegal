@@ -1,10 +1,11 @@
-from unstructured.partition.pdf import partition_pdf
-from langchain_ollama import OllamaEmbeddings
+import uuid
+
+from langchain.retrievers.multi_vector import MultiVectorRetriever
+from langchain.storage import InMemoryStore
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
-from langchain.storage import InMemoryStore
-from langchain.retrievers.multi_vector import MultiVectorRetriever
-import uuid
+from langchain_ollama import OllamaEmbeddings
+from unstructured.partition.pdf import partition_pdf
 
 # PDF dosyasını işleyelim
 chunks = partition_pdf(
@@ -39,20 +40,25 @@ embeddings = OllamaEmbeddings(model="mxbai-embed-large")
 vectorstore = Chroma(
     collection_name="mevzuat_rag_ollama",
     embedding_function=embeddings,
-    persist_directory="./chroma_mevzuat_db"
+    persist_directory="./chroma_mevzuat_db",
 )
 
 store = InMemoryStore()
 id_key = "doc_id"
 retriever = MultiVectorRetriever(vectorstore=vectorstore, docstore=store, id_key=id_key)
 
+
 # Yardımcı fonksiyon
 def add_chunks(chunks, kind):
     ids = [str(uuid.uuid4()) for _ in chunks]
-    documents = [Document(page_content=chunk.text, metadata={id_key: ids[i]}) for i, chunk in enumerate(chunks)]
+    documents = [
+        Document(page_content=chunk.text, metadata={id_key: ids[i]})
+        for i, chunk in enumerate(chunks)
+    ]
     vectorstore.add_documents(documents, ids=ids)
     store.mset(list(zip(ids, chunks)))
     print(f"✅ {kind} vektör olarak eklendi: {len(documents)}")
+
 
 add_chunks(texts, "Metin")
 add_chunks(tables, "Tablo")
