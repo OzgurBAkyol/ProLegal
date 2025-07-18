@@ -136,11 +136,6 @@ ProLegal, mevzuat ve parsel sorgu işlemlerini bir arada yürütebileceğiniz, R
 
 ---
 
-## Lisans
-MIT
-
----
-
 ## İletişim
 Her türlü soru, öneri ve katkı için:
 [OzgurBAkyol/ProLegal GitHub](https://github.com/OzgurBAkyol/ProLegal)
