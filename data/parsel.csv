@@ -1,3 +1,13 @@
-Mahalle,Ada,Parsel,Alan,Pafta
-Çerkeşli,1,101,500,12A
-Orhangazi,2,201,750,13B
+Mahalle,Ada,Parsel,Alan,Pafta,ilceAd,mevkii,ilId,durum,ilceId,zeminKmdurum,parselNo,mahalleAd,ozet,gittigiParselListe,gittigiParselSebep,alan,adaNo,nitelik,ilAd,mahalleId,pafta
+Çerkeşli,1.0,101.0,500.0,12A,,,,,,,,,,,,,,,,,
+Orhangazi,2.0,201.0,750.0,13B,,,,,,,,,,,,,,,,,
+,,,,,Urla,Kırlar,57.0,1.0,563.0,Ana Taşınmaz,1.0,Denizli,Denizli-3718/1,,,"8.371,75",3718.0,Zeytinlik,İzmir,150127.0,L17-A-15-B-3-A
+,,,,,Urla,Kırlar,57.0,1.0,563.0,Ana Taşınmaz,32.0,Denizli,Denizli-3720/32,,,"9.483,30",3720.0,Zeytin Ağaçlı Tarla,İzmir,150127.0,L17-A-15-B-2-D
+,,,,,Urla,Kırlar,57.0,1.0,563.0,Ana Taşınmaz,1.0,Denizli,Denizli-3718/1,,,"8.371,75",3718.0,Zeytinlik,İzmir,150127.0,L17-A-15-B-3-A
+,,,,,Urla,Kırlar,57.0,1.0,563.0,Ana Taşınmaz,1.0,Denizli,Denizli-3718/1,,,"8.371,75",3718.0,Zeytinlik,İzmir,150127.0,L17-A-15-B-3-A
+,,,,,Urla,Gebeşçiftliği,57.0,1.0,563.0,Ana Taşınmaz,2.0,Denizli,Denizli-3789/2,,,"8.618,09",3789.0,Çalılık,İzmir,150127.0,L17-B-11-D-1-C
+,,,,,Urla,Gebeşçiftliği,57.0,1.0,563.0,Ana Taşınmaz,2.0,Denizli,Denizli-3789/2,,,"8.618,09",3789.0,Çalılık,İzmir,150127.0,L17-B-11-D-1-C
+Denizli,3718.0,1.0,"8.371,75",L17-A-15-B-3-A,Urla,Kırlar,57.0,1.0,563.0,Ana Taşınmaz,1.0,Denizli,Denizli-3718/1,,,"8.371,75",3718.0,Zeytinlik,İzmir,150127.0,L17-A-15-B-3-A
+Denizli,3718.0,1.0,"8.371,75",L17-A-15-B-3-A,Urla,Kırlar,57.0,1.0,563.0,Ana Taşınmaz,1.0,Denizli,Denizli-3718/1,,,"8.371,75",3718.0,Zeytinlik,İzmir,150127.0,L17-A-15-B-3-A
+Denizli,3786.0,3.0,"8.766,52",L17-B-11-D-1-C,Urla,Gebeşçiftliği,57.0,1.0,563.0,Ana Taşınmaz,3.0,Denizli,Denizli-3786/3,,,"8.766,52",3786.0,Çalılık,İzmir,150127.0,L17-B-11-D-1-C
+Denizli,3718,1,"8.371,75",L17-A-15-B-3-A,Urla,Kırlar,57.0,1,563.0,Ana Taşınmaz,1,Denizli,Denizli-3718/1,,,"8.371,75",3718,Zeytinlik,İzmir,150127.0,L17-A-15-B-3-A
