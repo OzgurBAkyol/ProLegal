@@ -14,6 +14,10 @@ from bs4 import BeautifulSoup
 from shapely import geometry, wkt
 from shapely.errors import WKTReadingError
 from streamlit_folium import st_folium
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+import time
 
 from mevzuat_rag.agent4 import chain, merged_retrieve
 
@@ -59,28 +63,106 @@ os.makedirs(KML_FOLDER, exist_ok=True)
 os.makedirs(VISUAL_MAP_DIR, exist_ok=True)
 
 
-def get_parcel_json(mahalle_id: int, ada: int, parsel: int):
+def get_updated_parcel_from_browser(mahalle_id, ada, parsel):
+    url = f"https://parselsorgu.tkgm.gov.tr/#/ara/idari/{mahalle_id}/{ada}/{parsel}/0"
+    chrome_options = Options()
+    chrome_options.add_argument("--headless")  # GUI olmadan çalışsın
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    driver = webdriver.Chrome(options=chrome_options)
+    try:
+        driver.get(url)
+        time.sleep(5)  # sayfanın yüklenmesini bekle
+        try:
+            show_link = driver.find_element(By.XPATH, '//*[@id="show-disabled-detail-link"]')
+            show_link.click()
+            time.sleep(2)
+            yeni_adaparsel = driver.find_element(By.XPATH, '//*[@id="list-table"]/tbody/tr[2]/td[4]').text
+            if "/" in yeni_adaparsel:
+                yeni_ada, yeni_parsel = yeni_adaparsel.split("/")
+                return int(yeni_ada), int(yeni_parsel)
+        except Exception as e:
+            return None, None
+    finally:
+        driver.quit()
+    return None, None
+
+def get_parcel_json(mahalle_id: int, ada: int, parsel: int, _rec=0, _info=None):
     url = f"https://cbsapi.tkgm.gov.tr/megsiswebapi.v3/api/parsel/{mahalle_id}/{ada}/{parsel}"
     response = requests.get(url)
     if response.status_code != 200:
-        st.error("Parsel bulunamadı veya API hatası.")
-        return None
-    return response.json()
+        return None, _info
+    try:
+        data = response.json()
+        # Eğer geometry None ve gittigiParselListe varsa, yeni parsele yönlendir
+        if (
+            isinstance(data, dict)
+            and (data.get("geometry") is None)
+            and data.get("properties", {}).get("gittigiParselListe")
+            and _rec < 2
+        ):
+            try:
+                gitti = json.loads(data["properties"]["gittigiParselListe"])
+                if (
+                    gitti.get("features")
+                    and len(gitti["features"]) > 0
+                    and gitti["features"][0]["properties"].get("adaNo")
+                    and gitti["features"][0]["properties"].get("parselNo")
+                ):
+                    yeni_ada = int(gitti["features"][0]["properties"]["adaNo"])
+                    yeni_parsel = int(gitti["features"][0]["properties"]["parselNo"])
+                    sebep = data["properties"].get("gittigiParselSebep", "Taşınmaz pasife alınmış.")
+                    msg = f"Sorguladığınız parsel taşınmaz olarak pasife alınmış. {sebep} Yeni parsel: {yeni_ada}/{yeni_parsel}"
+                    return get_parcel_json(mahalle_id, yeni_ada, yeni_parsel, _rec=_rec+1, _info=msg)
+            except Exception:
+                return None, _info
+        return data, _info
+    except Exception:
+        return None, _info
 
 
 def extract_parcel_info(data: dict):
+    if not data or not isinstance(data, dict):
+        return [], {}
     coords = data.get("geometry", {}).get("coordinates", [])
     props = data.get("properties", {})
     return coords, props
 
 
 def append_props_to_csv(props: dict, filename: str):
-    df_new = pd.DataFrame([props])
+    # Anahtar eşleştirme: API'den gelen property isimlerini tablo başlıklarına eşleştir
+    mapping = {
+        "mahalleAd": "Mahalle",
+        "adaNo": "Ada",
+        "parselNo": "Parsel",
+        "alan": "Alan",
+        "pafta": "Pafta"
+    }
+    props_clean = {k: (v if v is not None else "") for k, v in props.items()}
+    # Eşleştirilmiş anahtarları ekle
+    for src, dst in mapping.items():
+        if src in props_clean:
+            props_clean[dst] = props_clean[src]
+    df_new = pd.DataFrame([props_clean])
+    # Eğer dosya varsa, eksik sütunları tamamla ve sıralamayı koru
     if os.path.exists(filename):
         df = pd.read_csv(filename)
+        for col in df_new.columns:
+            if col not in df.columns:
+                df[col] = ""
+        for col in df.columns:
+            if col not in df_new.columns:
+                df_new[col] = ""
+        # Sütun sıralamasını koru
+        df_new = df_new[df.columns]
         df = pd.concat([df, df_new], ignore_index=True)
     else:
+        # Eğer ilk kayıt ise, ana başlıkları öne al
+        main_cols = ["Mahalle", "Ada", "Parsel", "Alan", "Pafta"]
+        other_cols = [c for c in df_new.columns if c not in main_cols]
+        df_new = df_new[main_cols + other_cols]
         df = df_new
+    df = df.fillna("")
     df.to_csv(filename, index=False)
     return filename
 
@@ -148,7 +230,7 @@ def imar_sorgula(ada: int, parsel: int):
     kml_url = (
         f"https://eimar.dilovasi.bel.tr/imardurumu/service/kml.ashx?token={objectid}"
     )
-    kml_path = os.path.join(KML_FOLDER, f"parsel_{ada}_{parsel}_{objectid}.kml")
+    kml_path = os.path.join(KML_FOLDER, f"parsel_{ada}{parsel}{objectid}.kml")
     try:
         r_kml = requests.get(kml_url, headers=HEADERS, timeout=30)
         if r_kml.status_code == 200:
@@ -201,32 +283,33 @@ def parsel_sorgu_ui():
     ada = st.number_input("Ada No", min_value=1, value=3718)
     parsel = st.number_input("Parsel No", min_value=1, value=1)
     if st.button("Parsel Sorgula"):
-        data = get_parcel_json(mahalle_id, ada, parsel)
-        if data:
+        data, info_msg = get_parcel_json(mahalle_id, ada, parsel)
+        if info_msg:
+            st.info(info_msg)
+        if data and isinstance(data, dict):
             coords, props = extract_parcel_info(data)
-            csv_path = append_props_to_csv(props, filename=CSV_PATH_PARSEL)
-            map_path = f"{VISUAL_MAP_DIR}/parsel_{mahalle_id}_{ada}_{parsel}.html"
-            harita_dosyasi = plot_parcel_on_map(coords, map_path)
-            st.subheader("Parsel Özellikleri")
-            st.json(props)
-            st.subheader("Koordinatlar")
-            st.write(coords)
-            if harita_dosyasi and os.path.exists(harita_dosyasi):
-                with open(harita_dosyasi, "r") as f:
-                    html = f.read()
-                st.components.v1.html(html, height=500)
-            elif coords and coords[0]:
-                m = folium.Map(
-                    location=[coords[0][0][1], coords[0][0][0]], zoom_start=16
-                )
-                folium.Polygon(
-                    locations=[(lat, lon) for lon, lat in coords[0]], color="red"
-                ).add_to(m)
-                st_folium(m, width=700, height=500)
-            if csv_path and os.path.exists(csv_path):
-                st.subheader("CSV Kayıtları (Son eklenen dahil)")
-                df = pd.read_csv(csv_path)
-                st.dataframe(df.tail(10))
+            if coords and props:
+                csv_path = append_props_to_csv(props, filename=CSV_PATH_PARSEL)
+                map_path = f"{VISUAL_MAP_DIR}/parsel_{mahalle_id}{ada}{parsel}.html"
+                harita_dosyasi = plot_parcel_on_map(coords, map_path)
+                st.subheader("Parsel Özellikleri")
+                st.json(props)
+                st.markdown("Koordinatlar: [...]")
+                with st.expander("Detaylı Koordinatları Göster"):
+                    st.write(coords)
+                if harita_dosyasi and os.path.exists(harita_dosyasi):
+                    with open(harita_dosyasi, "r") as f:
+                        html = f.read()
+                    st.components.v1.html(html, height=500)
+                elif coords and coords[0]:
+                    m = folium.Map(location=[coords[0][0][1], coords[0][0][0]], zoom_start=16)
+                    folium.Polygon(locations=[(lat, lon) for lon, lat in coords[0]], color="red").add_to(m)
+                    st_folium(m, width=700, height=500)
+                if csv_path and os.path.exists(csv_path):
+                    st.subheader("CSV Kayıtları (Son eklenen dahil)")
+                    df = pd.read_csv(csv_path)
+                    st.dataframe(df.tail(10))
+            # else: hiçbir açıklama veya hata mesajı gösterme
         else:
             show_error("Parsel verisi alınamadı.")
 
@@ -367,10 +450,17 @@ def parsel_etiketleme_ui():
     )
 
 
-# --- Menü ve Sekmeler ---
-st.set_page_config(
-    page_title="ProLegal - Akıllı Mevzuat ve Parsel Asistanı", layout="wide"
-)
+# --- GÖRSEL VE YAZISAL İYİLEŞTİRMELER ---
+# Sayfa ayarları ve logo (varsa)
+st.set_page_config(page_title="ProLegal - Akıllı Mevzuat ve Parsel Asistanı", page_icon="⚖️", layout="wide")
+try:
+    st.image("logo.png", width=120)
+except Exception:
+    pass
+st.title("ProLegal - Akıllı Mevzuat ve Parsel Asistanı")
+st.markdown("#### 👋 Hoşgeldiniz! Aşağıdaki menüden istediğiniz modülü seçebilirsiniz.")
+
+# --- Streamlit Menü ve Arayüz ---
 st.sidebar.header("Menü")
 menu = st.sidebar.radio(
     "Seçim yapın",
@@ -379,16 +469,84 @@ menu = st.sidebar.radio(
         "Parsel Sorgu ve Harita",
         "İmar Sorgu",
         "Poligon Analizi",
-        "Parsel Etiketleme",
-    ],
+        "Parsel Etiketleme"
+    ]
 )
+
 if menu == "Mevzuat Asistanı":
+    st.header("📚 Mevzuat Soru-Cevap (RAG Agent)")
+    st.markdown("Yapay zeka destekli mevzuat asistanı ile Türkçe mevzuat sorularınızı yanıtlayabilirsiniz.")
+    with st.expander("🔎 Nasıl Çalışır?"):
+        st.write("Mevzuat dosyalarından embedding ile bilgi çekilir, OpenRouter LLM ile Türkçe cevap oluşturulur. Soru, vektör arama ile ilgili mevzuat parçalarıyla eşleştirilir ve modelden yanıt alınır.")
     mevzuat_rag_ui()
 elif menu == "Parsel Sorgu ve Harita":
-    parsel_sorgu_ui()
+    st.header("🗺️ Parsel Sorgula ve Haritada Göster")
+    st.markdown("TKGM üzerinden parsel sorgulaması yapabilir ve sonucu haritada görebilirsiniz.")
+    with st.expander("🔎 Nasıl Çalışır?"):
+        st.write("Girilen mahalle, ada ve parsel bilgisiyle TKGM API'sine sorgu atılır, dönen geometri haritada gösterilir ve özellikler tabloya kaydedilir.")
+
+    # Mahalle ID seçim kutusu (yeni özellik)
+    mahalle_df = None
+    try:
+        mahalle_df = pd.read_csv("data/mahalle_id.csv")
+    except Exception:
+        st.warning("Mahalle ID listesi yüklenemedi, manuel giriş yapabilirsiniz.")
+    mahalle_id = None
+    if mahalle_df is not None and "MahalleID" in mahalle_df.columns and "MahalleAdı" in mahalle_df.columns:
+        mahalle_options = [f"{row.MahalleID} ({row.MahalleAdı})" for _, row in mahalle_df.iterrows()]
+        mahalle_map = {f"{row.MahalleID} ({row.MahalleAdı})": row.MahalleID for _, row in mahalle_df.iterrows()}
+        secim = st.selectbox("Mahalle ID seçin", mahalle_options)
+        mahalle_id = mahalle_map[secim]
+    else:
+        mahalle_id = st.number_input("Mahalle ID", min_value=1, value=150127)
+
+    ada = st.number_input("Ada No", min_value=0, value=3718)
+    parsel = st.number_input("Parsel No", min_value=0, value=1)
+    if st.button("Parsel Sorgula"):
+        data, info_msg = get_parcel_json(mahalle_id, ada, parsel)
+        if info_msg:
+            st.info(info_msg)
+        if data and isinstance(data, dict):
+            coords, props = extract_parcel_info(data)
+            if coords and props:
+                csv_path = append_props_to_csv(props, filename=CSV_PATH_PARSEL)
+                map_path = f"visual_map/parsel_{mahalle_id}{ada}{parsel}.html"
+                harita_dosyasi = plot_parcel_on_map(coords, map_path)
+                st.subheader("Parsel Özellikleri")
+                st.json(props)
+                st.markdown("Koordinatlar: [...]")
+                with st.expander("Detaylı Koordinatları Göster"):
+                    st.write(coords)
+                if harita_dosyasi and os.path.exists(harita_dosyasi):
+                    with open(harita_dosyasi, "r") as f:
+                        html = f.read()
+                    st.components.v1.html(html, height=500)
+                elif coords and coords[0]:
+                    m = folium.Map(location=[coords[0][0][1], coords[0][0][0]], zoom_start=16)
+                    folium.Polygon(locations=[(lat, lon) for lon, lat in coords[0]], color="red").add_to(m)
+                    st_folium(m, width=700, height=500)
+                if csv_path and os.path.exists(csv_path):
+                    st.subheader("CSV Kayıtları (Son eklenen dahil)")
+                    df = pd.read_csv(csv_path)
+                    st.dataframe(df.tail(10))
+            # else: hiçbir açıklama veya hata mesajı gösterme
+        else:
+            st.error("Parsel verisi alınamadı.")
 elif menu == "İmar Sorgu":
+    st.header("🏢 İmar Sorgu")
+    st.markdown("Dilovası Belediyesi imar sorgulama servisi ile ada/parsel bazında imar durumu sorgulayabilirsiniz.")
+    with st.expander("🔎 Nasıl Çalışır?"):
+        st.write("Ada ve parsel ile belediye API'sine sorgu atılır, dönen imar bilgileri ve KML dosyası harita ve tablo olarak sunulur.")
     imar_sorgu_ui()
 elif menu == "Poligon Analizi":
+    st.header("🏡 Poligon Analizi: Yapı, Yol ve Eğim (Google API + OSM)")
+    st.markdown("Poligonların yapılaşma, yol yakınlığı ve eğim analizini harita üzerinde inceleyebilirsiniz.")
+    with st.expander("🔎 Nasıl Çalışır?"):
+        st.write("Poligonların centroid noktası üzerinden eğim (slope) verisi alınır, OSM'den yol ve yapı geometrileri çekilir, tüm analizler harita ve tabloya yansıtılır.")
     poligon_analiz_ui()
 elif menu == "Parsel Etiketleme":
+    st.header("🏷️ Dilovası Parsel Filtreleme & Etiketleme Aracı")
+    st.markdown("5 sütunlu veri üzerinde 3 sütuna göre filtreleme ve satırlara etiket atama işlemlerini kolayca yapabilirsiniz.")
+    with st.expander("🔎 Nasıl Çalışır?"):
+        st.write("Excel dosyasındaki parseller filtrelenir, seçilen satırlara etiket atanır ve sonuçlar kaydedilip indirilebilir.")
     parsel_etiketleme_ui()
